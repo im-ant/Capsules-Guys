@@ -1,0 +1,44 @@
+
+
+#Creating overlapping dataset 
+
+def shift(image1, image2, max_1):
+  pad_1 = np.pad(image1, max_1, 'minimum')
+  pad_2 = np.pad(image2, max_1, 'minimum')
+  r_2 = np.roll(pad_2, [max_1, max_1], axis=1)
+  im = pad_1 + r_2
+  shifted_image = im[max_1:-max_1, max_1:-max_1]
+  return shifted_image
+
+
+def multi_mnist_test(size, max_1): 
+  
+  (x_train, y_train), (x_test, y_test) = mnist.load_data()
+  new_images = np.zeros((size, 28, 28))
+  new_labels = np.zeros((size, 10))
+  x_train0 = np.zeros((size, 28, 28))
+  x_train1 = np.zeros((size, 28, 28))
+  y_train1 = np.zeros((size, 2))
+
+  for i in range(0,size):
+    a = random.randint(0, 59999)
+    b = random.randint(0, 59999)
+    if (y_train[a] != y_train[b]):
+      x_train0[i] = x_train[a]
+      x_train1[i] = x_train[b]
+      new_images[i] = shift(x_train[a], x_train[b], max_1)
+      y_train1[i][0] = int(y_train[a])
+      y_train1[i][1] = int(y_train[b])
+      new_labels[i][y_train[a]] = 1
+      new_labels[i][y_train[b]] = 1
+    else: 
+      i = i-1 
+      
+  new_images = new_images.reshape(-1, 28, 28, 1).astype('float32')/255
+  x_train0 = x_train0.reshape(-1, 28, 28, 1).astype('float32')/255
+  x_train1 = x_train1.reshape(-1, 28, 28, 1).astype('float32')/255
+  y_train1 = y_train1.astype('int64')
+  return new_images, new_labels, x_train0, x_train1, y_train1 
+  
+  
+  
