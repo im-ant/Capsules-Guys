@@ -1,0 +1,105 @@
+#Inspired by Icedeath github repository which complement the code we had from Xifeng Guo 
+
+
+#Loading dataset
+
+args_m = {}
+(x_train, y_train), (x_test, y_test), (x_train0, x_train1), (x_test0, x_test1), (y_train1, y_test1) = load_mnist(4)
+y_test = K.eval(K.sum(y_test, -2))
+y_train = K.eval(K.sum(y_train, -2))
+
+def CapsNet(input_shape, n_class, routings):
+    x = layers.Input(shape=input_shape)
+    conv1 = layers.Conv2D(filters=256, kernel_size=9, strides=1, padding='valid', 
+                          activation='relu', name='conv1')(x)
+    primarycaps = PrimaryCap(conv1, dim_capsule=8, n_channels=32, kernel_size=9,
+                             strides=2, padding='valid')
+    digitcaps = CapsuleLayer(num_capsule=n_class, dim_capsule=16, routings=routings,
+                             name='digitcaps')(primarycaps)
+    out_caps = Length(name='capsnet')(digitcaps)
+
+    y = layers.Input(shape=(2,))
+
+    masked_by_y = Mask()([digitcaps, y])
+    masked_by_y0 =  Lambda(lambda x: x[:,0,:])(masked_by_y)
+    masked_by_y1 =  Lambda(lambda x: x[:,1,:])(masked_by_y)
+
+    masked = Mask()(digitcaps)
+    masked0 =  Lambda(lambda x: x[:,0,:])(masked)
+    masked1 =  Lambda(lambda x: x[:,1,:])(masked)
+
+    decoder = models.Sequential(name='decoder')
+    decoder.add(layers.Reshape(target_shape=(4,4,1), input_shape = (16,)))
+    decoder.add(layers.ZeroPadding2D(((3,0),(3,0))))
+    
+    decoder.add(layers.UpSampling2D((2,2)))
+    decoder.add(layers.Conv2D(256,3,activation='relu',padding = 'same'))
+    decoder.add(layers.Conv2D(256,3,activation='relu',padding = 'same'))
+    
+    decoder.add(layers.UpSampling2D((2,2)))
+    decoder.add(layers.Conv2D(128,3,activation='relu',padding = 'same'))
+    decoder.add(layers.Conv2D(128,3,activation='relu',padding = 'same'))
+    decoder.add(layers.Conv2D(1,1))
+
+    train_model = models.Model([x, y], [out_caps, decoder(masked_by_y0), decoder(masked_by_y1)])
+    eval_model = models.Model(x, [out_caps, decoder(masked0), decoder(masked1)])
+    return train_model, eval_model
+
+
+def margin_loss(y_true, y_pred, margin = 0.4, downweight = 0.5):
+    y_pred = y_pred - 0.5
+    positive_cost = y_true * K.cast(
+                    K.less(y_pred, margin), 'float32') * K.pow((y_pred - margin), 2)
+    negative_cost = (1 - y_true) * K.cast(
+                    K.greater(y_pred, -margin), 'float32') * K.pow((y_pred + margin), 2)
+    return 0.5 * positive_cost + downweight * 0.5 * negative_cost
+    
+def train(model, data, args):
+    (x_train, y_train), (x_test, y_test), (x_train0, x_train1), (x_test0, x_test1),(y_train1, y_test1) = data
+
+    #checkpoint = callbacks.ModelCheckpoint(args.save_file, monitor='train_capsnet_loss', verbose=1, save_best_only=True, 
+    #                              save_weights_only=True, mode='auto', period=1)
+    #lr_decay = callbacks.LearningRateScheduler(schedule=lambda epoch: args.lr * (args.lr_decay ** epoch))
+    model.compile(optimizer=optimizers.Adam(lr=args['lr']),
+                  loss=[margin_loss, 'mse', 'mse'],
+                  loss_weights=[1., args['lam_recon'], args['lam_recon']],
+                  metrics={})
+    hist = model.fit([x_train, y_train1], [y_train, x_train0, x_train1], batch_size=args['batch_size'], epochs=args['epochs'],
+                     validation_data=[[x_test, y_test1], [y_test, x_test0, x_test1]])
+                     #, callbacks=[checkpoint, lr_decay])
+    return hist.history
+    
+args = {
+    "epochs":20,
+    "batch_size": 100,
+    "lr":0.002,
+    "lr_decay":0.9,
+    'lam_recon': 0.5,
+    "routings": 4,
+    "sf": 'caps2.h5',
+    "t": 0,
+    "l": 0,
+    "p": 0,
+    "dataset": 'mnist_shifted.mat',
+    "digit": 5,
+    "w": None
+}
+print(args)
+
+K.set_image_data_format('channels_last')
+#data = sio.loadmat('mnist_shifted.mat', appendmat=False)
+#print(data[0])
+#for i in data:
+#  print(locals()[i])
+#  locals()[i] = data[i]
+#  del data
+#  del i
+
+model, eval_model = CapsNet(input_shape=x_train.shape[1:], n_class=10, routings=args['routings'])
+
+args['epochs'] = 15
+first = train(model=model, data=(
+                        (x_train, y_train), (x_test, y_test), (x_train0, x_train1), (x_test0, x_test1)
+                        , (y_train1, y_test1)), args=args)
+                        
+                    
