@@ -1,13 +1,13 @@
 #Inspired by Icedeath github repository which complement the code we had from Xifeng Guo 
-
+#import capsulelayers2.py and mnist_shift.py
 
 #Loading dataset
-
 args_m = {}
 (x_train, y_train), (x_test, y_test), (x_train0, x_train1), (x_test0, x_test1), (y_train1, y_test1) = load_mnist(4)
 y_test = K.eval(K.sum(y_test, -2))
 y_train = K.eval(K.sum(y_train, -2))
 
+#Building the architecture of CapNET 
 def CapsNet(input_shape, n_class, routings):
     x = layers.Input(shape=input_shape)
     conv1 = layers.Conv2D(filters=256, kernel_size=9, strides=1, padding='valid', 
@@ -45,7 +45,7 @@ def CapsNet(input_shape, n_class, routings):
     eval_model = models.Model(x, [out_caps, decoder(masked0), decoder(masked1)])
     return train_model, eval_model
 
-
+#Loss function 
 def margin_loss(y_true, y_pred, margin = 0.4, downweight = 0.5):
     y_pred = y_pred - 0.5
     positive_cost = y_true * K.cast(
